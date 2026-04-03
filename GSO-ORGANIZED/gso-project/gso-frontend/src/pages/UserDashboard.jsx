@@ -154,8 +154,7 @@ export default function UserDashboard({ currentUser, onLogout, services }) {
                   <div className="requests-list">{filteredUserRequests.map(r=>(
                     <div key={r.id} className={`req-card req-${r.status}`}>
                       <div className="req-top"><div><span className="req-svc">{getServiceMeta(r.service_type, services).icon} {r.service_type}</span>{r.priority_number && <span className="req-priority">{r.priority_number}</span>}</div><Badge status={r.status}/></div>
-                      <p className="req-desc">{getRequestDescription(r)}</p>
-                      <div className="req-meta"><span>{"\u{1F4CD} "}{getRequestLocation(r)}</span>{getRequestPreferredDate(r)&&<span>{"\u{1F4C5} "}{getRequestPreferredDate(r)}</span>}<span>{"\u{1F550} "}{formatDateTime(r.submitted_at)}</span></div>
+                      <div className="req-meta" style={{marginTop:"0.5rem"}}><span>{"\u{1F550} "}{formatDateTime(r.submitted_at)}</span></div>
                       
                       <button className="btn-ghost" style={{padding:"0.25rem 0.5rem",fontSize:"0.8rem",marginTop:"0.5rem"}} onClick={()=>setExpandedReqs(p=>({...p,[r.id]:!p[r.id]}))}>
                         {expandedReqs[r.id]?"Hide Details \u25B2":"View Details \u25BC"}
@@ -163,6 +162,8 @@ export default function UserDashboard({ currentUser, onLogout, services }) {
                       
                       {expandedReqs[r.id] && (
                         <div style={{marginTop:"0.75rem", borderTop:"1px solid rgba(255,255,255,0.05)", paddingTop:"0.75rem"}}>
+                          <p className="req-desc" style={{marginBottom:"0.5rem"}}>{getRequestDescription(r)}</p>
+                          <div className="req-meta" style={{marginBottom:"0.75rem"}}><span>{"\u{1F4CD} "}{getRequestLocation(r)}</span>{getRequestPreferredDate(r)&&<span>{"\u{1F4C5} "}{getRequestPreferredDate(r)}</span>}</div>
                           <ServiceDetailBlock req={r} services={services}/>
                           {r.staff_note&&<div className="staff-note">{"\u{1F6E1}\u{FE0F} Staff: "}{r.staff_note}</div>}
                           <ApprovalTrail req={r} requiredApprovals={settings.required_approvals}/>
@@ -202,8 +203,7 @@ export default function UserDashboard({ currentUser, onLogout, services }) {
                   <div className="requests-list">{completedRequests.map(r=>(
                     <div key={r.id} className="req-card req-completed">
                       <div className="req-top"><div><span className="req-svc">{getServiceMeta(r.service_type, services).icon} {r.service_type}</span>{r.priority_number && <span className="req-priority">{r.priority_number}</span>}</div><Badge status={r.status}/></div>
-                      <p className="req-desc">{getRequestDescription(r)}</p>
-                      <div className="req-meta"><span>Completed: {r.completed_at ? formatDateTime(r.completed_at) : formatDateTime(r.submitted_at)}</span>{r.completed_by_name&&<span>By: {r.completed_by_name}</span>}</div>
+                      <div className="req-meta" style={{marginTop:"0.5rem"}}><span>Completed: {r.completed_at ? formatDateTime(r.completed_at) : formatDateTime(r.submitted_at)}</span></div>
                       
                       {r.feedback_submitted_at && (
                         <>
@@ -213,6 +213,8 @@ export default function UserDashboard({ currentUser, onLogout, services }) {
                           {expandedReqs[r.id] && (
                             <div style={{marginTop:"0.75rem", borderTop:"1px solid rgba(255,255,255,0.05)", paddingTop:"0.75rem"}}>
                                <div className="staff-note">Feedback sent: {r.feedback_rating || "-"}/5 - {r.feedback_comment} - {formatDateTime(r.feedback_submitted_at)}</div>
+                               <p className="req-desc" style={{marginTop:"0.75rem"}}>{getRequestDescription(r)}</p>
+                               <div className="req-meta"><span>{"\u{1F4CD} "}{getRequestLocation(r)}</span>{r.completed_by_name&&<span>By: {r.completed_by_name}</span>}</div>
                                <div style={{marginTop:"0.5rem"}}><ServiceDetailBlock req={r} services={services}/></div>
                             </div>
                           )}

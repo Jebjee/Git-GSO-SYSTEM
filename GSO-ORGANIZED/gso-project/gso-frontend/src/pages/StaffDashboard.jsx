@@ -8,6 +8,7 @@ import { getServiceCatalog, getServiceMeta, getServiceOptionsForRequests, getReq
 
 export default function StaffDashboard({ currentUser, onLogout, services }) {
   const [tab, setTab] = useState("inbox");
+  const [viewedCompleted, setViewedCompleted] = useState(false);
   const [requests, setRequests] = useState([]); const [myReqs, setMyReqs] = useState([]);
   const [feedbackList, setFeedbackList] = useState([]);
   const [pendingFeedbackList, setPendingFeedbackList] = useState([]);
@@ -27,6 +28,7 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
   const [sending, setSending] = useState(false);
   const [reminderLoadingId, setReminderLoadingId] = useState("");
   const [toast, showToast] = useToast(); const [user, setUser] = useState(currentUser);
+  const [viewFeedback, setViewFeedback] = useState(null);
   const activeService = getServiceMeta(svcType, services);
 
   const fetchAll = useCallback(async (activeTab = tab, force = false) => {
@@ -55,8 +57,12 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
         setPendingFeedbackList(pendingFb);
       }
     } catch(e){console.error(e);} finally{setLoading(false);}
-  },[tab, myReqs.length]);
+  },[tab, myReqs.length, feedbackServiceFilter]);
   useEffect(()=>{fetchAll(tab, false);},[fetchAll, tab]);
+  // Always refresh feedback when filter changes
+  useEffect(()=>{
+    if (tab==="feedback-storage") fetchAll("feedback-storage", true);
+  },[feedbackServiceFilter]);
   useEffect(()=>{
     if (!catalog.some(service => service.name === svcType)) {
       setSvcType(catalog[0]?.name || "Carpentry");
@@ -159,7 +165,7 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
           {[
             {id:"inbox",label:"Inbox",icon:"📥",badge:pendingCount},
             {id:"approved-ready",label:"Ready for Service",icon:"✅",badge:approvedCount},
-            {id:"completed-jobs",label:"Job Done",icon:"🏁",badge:completedCount},
+            {id:"completed-jobs",label:"Job Done",icon:"🏁",badge: viewedCompleted ? 0 : completedCount},
             {id:"all-requests",label:"All Requests",icon:"📋"},
             {id:"my-service",label:"Request Service",icon:"🛠️"},
             {id:"my-requests",label:"My Requests",icon:"🧾"},
@@ -168,7 +174,11 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
             {id:"notifications",label:"Notifications",icon:"🔔",badge:unread},
             {id:"profile",label:"My Profile",icon:"👤"},
           ].map(({id,label,icon,badge})=>(
-            <button key={id} className={`sidebar-btn ${tab===id?"active":""}`} onClick={()=>{setTab(id);if(id==="notifications")markRead();}}>
+            <button key={id} className={`sidebar-btn ${tab===id?"active":""}`} onClick={()=>{
+              setTab(id);
+              if(id==="notifications")markRead();
+              if(id==="completed-jobs")setViewedCompleted(true);
+            }}>
               <span style={{display:"flex",alignItems:"center",width:"100%"}}>
                 <span>{icon} {label}</span>
                 {badge>0&&<span className="notif-dot">{badge}</span>}
@@ -194,8 +204,7 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
                   <div className="requests-list">{filteredPending.map(r=>(
                     <div key={r.id} className="req-card req-pending clickable" onClick={()=>{setViewReq(r);setActionNote("");setActionPriority(r.priority_number || "");}}>
                       <div className="req-top"><div><span className="req-svc">{getServiceMeta(r.service_type, services).icon} {r.service_type}</span>{r.priority_number && <span className="req-priority">{r.priority_number}</span>}<span className="req-user">by {r.user_name} - {r.department}</span></div><Badge status={r.status}/></div>
-                      <p className="req-desc">{r.description}</p>
-                      <div className="req-meta"><span>Location: {r.location}</span>{r.preferred_date&&<span>Preferred: {r.preferred_date}</span>}<span>Submitted: {formatDateTime(r.submitted_at)}</span></div>
+                      <div className="req-meta" style={{marginTop:"0.5rem"}}><span>Submitted: {formatDateTime(r.submitted_at)}</span><span style={{color:"var(--primary)",fontWeight:600}}>Click to view full details</span></div>
                       <div className="req-actions" onClick={e=>e.stopPropagation()}>
                         <button className="view-btn" onClick={()=>{setViewReq(r);setActionNote("");setActionPriority(r.priority_number || "");}}>Review</button>
                         <button className="btn-verify sm" disabled={!!actionLoading} onClick={()=>{
@@ -226,9 +235,7 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
                   <div className="requests-list">{filteredApproved.map(r=>(
                     <div key={r.id} className="req-card req-approved clickable compact" onClick={()=>{setViewReq(r);setActionNote("");}}>
                       <div className="req-top"><div><span className="req-svc">{getServiceMeta(r.service_type, services).icon} {r.service_type}</span>{r.priority_number && <span className="req-priority">{r.priority_number}</span>}<span className="req-user">by {r.user_name} - {r.department}</span></div><Badge status={r.status}/></div>
-                      <p className="req-desc">{r.description}</p>
-                      <div className="req-meta"><span>Location: {r.location}</span>{r.preferred_date&&<span>Preferred: {r.preferred_date}</span>}<span>Time: {r.resolved_at ? formatDateTime(r.resolved_at) : formatDateTime(r.submitted_at)}</span></div>
-                      <div className="compact-hint">Click to view approved details</div>
+                      <div className="req-meta" style={{marginTop:"0.5rem"}}><span>Time: {r.resolved_at ? formatDateTime(r.resolved_at) : formatDateTime(r.submitted_at)}</span><span style={{color:"var(--primary)",fontWeight:600}}>Click to view approved details</span></div>
                     </div>
                   ))}</div>}
               </div>
@@ -248,13 +255,7 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
                   <div className="requests-list">{filteredCompleted.map(r=>(
                     <div key={r.id} className="req-card req-completed clickable compact" onClick={()=>{setViewReq(r);setActionNote("");}}>
                       <div className="req-top"><div><span className="req-svc">{getServiceMeta(r.service_type, services).icon} {r.service_type}</span>{r.priority_number && <span className="req-priority">{r.priority_number}</span>}<span className="req-user">by {r.user_name} - {r.department}</span></div><Badge status={r.status}/></div>
-                      <p className="req-desc">{r.description}</p>
-                      <div className="req-meta">
-                        <span>Location: {r.location}</span>
-                        <span>Completed: {r.completed_at ? formatDateTime(r.completed_at) : formatDateTime(r.submitted_at)}</span>
-                        {r.completed_by_name&&<span>By: {r.completed_by_name}</span>}
-                      </div>
-                      <div className="compact-hint">Click to view completed job details</div>
+                      <div className="req-meta" style={{marginTop:"0.5rem"}}><span>Completed: {r.completed_at ? formatDateTime(r.completed_at) : formatDateTime(r.submitted_at)}</span><span style={{color:"var(--primary)",fontWeight:600}}>Click to view completed details</span></div>
                     </div>
                   ))}</div>}
               </div>
@@ -281,12 +282,9 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
                 </div>
                 {filtered.length===0?<div className="empty-state">No requests.</div>:
                   <div className="requests-list">{filtered.map(r=>(
-                    <div key={r.id} className={`req-card req-${r.status}`}>
+                    <div key={r.id} className={`req-card req-${r.status} clickable`} onClick={()=>{setViewReq(r);setActionNote("");}}>
                       <div className="req-top"><div><span className="req-svc">{getServiceMeta(r.service_type, services).icon} {r.service_type}</span>{r.priority_number && <span className="req-priority">{r.priority_number}</span>}<span className="req-user">by {r.user_name}</span></div><Badge status={r.status}/></div>
-                      <p className="req-desc">{r.description}</p>
-                      <div className="req-meta"><span>Location: {r.location}</span><span>Submitted: {formatDateTime(r.submitted_at)}</span></div>
-                      {r.staff_note&&<div className="staff-note">Note: {r.staff_note}</div>}
-                      <ApprovalTrail req={r} requiredApprovals={2}/>
+                      <div className="req-meta" style={{marginTop:"0.5rem"}}><span>Submitted: {formatDateTime(r.submitted_at)}</span><span style={{color:"var(--primary)",fontWeight:600}}>Click to view full details</span></div>
                     </div>
                   ))}</div>}
               </div>
@@ -316,11 +314,9 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
                 {myReqs.length===0?<div className="empty-state">No requests yet.</div>:
                   filteredMyRequests.length===0?<div className="empty-state">No requests for this service.</div>:
                   <div className="requests-list">{filteredMyRequests.map(r=>(
-                    <div key={r.id} className={`req-card req-${r.status}`}>
+                    <div key={r.id} className={`req-card req-${r.status} clickable`} onClick={()=>setViewReq(r)}>
                       <div className="req-top"><div><span className="req-svc">{getServiceMeta(r.service_type, services).icon} {r.service_type}</span>{r.priority_number && <span className="req-priority">{r.priority_number}</span>}</div><Badge status={r.status}/></div>
-                      <p className="req-desc">{r.description}</p>
-                      <div className="req-meta"><span>Location: {r.location}</span><span>Submitted: {formatDateTime(r.submitted_at)}</span></div>
-                      <ApprovalTrail req={r} requiredApprovals={2}/>
+                      <div className="req-meta" style={{marginTop:"0.5rem"}}><span>Submitted: {formatDateTime(r.submitted_at)}</span><span style={{color:"var(--primary)",fontWeight:600}}>Click to view full details</span></div>
                     </div>
                   ))}</div>}
               </div>
@@ -352,37 +348,74 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
                   </div>
                 </div>
 
-                <div className="viz-grid">
+
+                {/* Charts: Status + Service */}
+                <div className="viz-grid" style={{marginTop:"1.5rem"}}>
                   <div className="chart-panel">
-                    <h4>Request Status Flow</h4>
-                    <p>See where requests are currently sitting in the staff workflow.</p>
+                    <h4>📊 Request Status Flow</h4>
+                    <p>See where requests currently sit in the workflow.</p>
                     <HorizontalBarChart items={staffStatusChart} />
                   </div>
-
                   <div className="chart-panel">
-                    <h4>Service Demand</h4>
+                    <h4>🧰 Service Demand</h4>
                     <p>Top requested service types handled by the office.</p>
                     <DonutChart items={staffServiceChart.length ? staffServiceChart : [{ label: "No Data", value: 1, color: "rgba(255,255,255,0.12)" }]} totalLabel="Services" />
                   </div>
                 </div>
 
-                <div className="overview-section">
-                  <div className="overview-title">
-                    <div>
-                      <h3>Core + Feedback Metrics</h3>
-                      <p>Only key workflow and feedback numbers.</p>
-                    </div>
+                {/* Department Distribution */}
+                <div className="viz-grid" style={{marginTop:"1.5rem"}}>
+                  <div className="chart-panel">
+                    <h4>🏢 Department Breakdown</h4>
+                    <p>Departments generating the most requests from their staff and instructors.</p>
+                    {(() => {
+                      const depts = Object.entries(
+                        requests.reduce((acc, r) => { const d = r.department || "Unknown"; acc[d] = (acc[d]||0)+1; return acc; }, {})
+                      ).sort((a,b)=>b[1]-a[1]).slice(0,8);
+                      return depts.length ? (
+                        <HorizontalBarChart items={depts.map(([label,value],i)=>({
+                          label, value,
+                          color: ["#60a5fa","#38bdf8","#a78bfa","#4ade80","#f59e0b","#f87171","#34d399","#fb7185"][i%8],
+                        }))} />
+                      ) : <div className="empty-state" style={{fontSize:"0.85rem"}}>No department data yet.</div>;
+                    })()}
                   </div>
-                  <div className="stats-grid">
-                    {[
-                      {lbl:"Total",num:analytics.stats.total,color:"#93c5fd",bg:"rgba(59,130,246,0.1)",bc:"rgba(59,130,246,0.3)"},
-                      {lbl:"Pending",num:analytics.stats.pending,color:"#fbbf24",bg:"rgba(245,158,11,0.1)",bc:"rgba(245,158,11,0.3)"},
-                      {lbl:"Completed",num:analytics.stats.completed,color:"#5eead4",bg:"rgba(20,184,166,0.1)",bc:"rgba(20,184,166,0.3)"},
-                      {lbl:"Feedback Submitted",num:staffFeedbackSubmitted,color:"#4ade80",bg:"rgba(34,197,94,0.1)",bc:"rgba(34,197,94,0.3)"},
-                      {lbl:"Feedback Pending",num:staffFeedbackPending,color:"#fb7185",bg:"rgba(244,63,94,0.1)",bc:"rgba(244,63,94,0.3)"},
-                      {lbl:"Avg Rating",num:staffFeedbackAvg,color:"#a78bfa",bg:"rgba(139,92,246,0.1)",bc:"rgba(139,92,246,0.3)"},
-                    ].map(s=><div key={s.lbl} className="stat-card" style={{background:s.bg,border:`1px solid ${s.bc}`}}><span className="num" style={{color:s.color}}>{s.num}</span><div className="lbl">{s.lbl}</div></div>)}
+                  <div className="chart-panel">
+                    <h4>📍 Top Request Locations</h4>
+                    <p>Rooms and areas where most service requests originate.</p>
+                    {(() => {
+                      const locs = Object.entries(
+                        requests.reduce((acc, r) => { const l = r.location || "Unknown"; acc[l] = (acc[l]||0)+1; return acc; }, {})
+                      ).sort((a,b)=>b[1]-a[1]).slice(0,8);
+                      const max = locs[0]?.[1] || 1;
+                      return locs.length ? (
+                        <div style={{display:"flex",flexDirection:"column",gap:"0.55rem",marginTop:"0.75rem"}}>
+                          {locs.map(([loc,cnt],i)=>(
+                            <div key={i} style={{display:"flex",alignItems:"center",gap:"0.75rem",fontSize:"0.85rem"}}>
+                              <span style={{width:"1.5rem",textAlign:"right",color:"var(--text-muted)",fontSize:"0.75rem",fontWeight:600}}>#{i+1}</span>
+                              <span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{loc}</span>
+                              <div style={{flex:2,background:"rgba(255,255,255,0.05)",borderRadius:"4px",overflow:"hidden",height:"10px"}}>
+                                <div style={{height:"100%",background:"#38bdf8",width:`${(cnt/max)*100}%`,borderRadius:"4px",transition:"width 0.4s"}}/>
+                              </div>
+                              <span style={{minWidth:"2rem",textAlign:"right",fontWeight:700,color:"#38bdf8"}}>{cnt}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <div className="empty-state" style={{fontSize:"0.85rem"}}>No location data yet.</div>;
+                    })()}
                   </div>
+                </div>
+
+                {/* Core Stats */}
+                <div className="stats-grid" style={{marginTop:"1.5rem"}}>
+                  {[
+                    {lbl:"Total",num:analytics.stats.total,color:"#93c5fd",bg:"rgba(59,130,246,0.1)",bc:"rgba(59,130,246,0.3)"},
+                    {lbl:"Pending",num:analytics.stats.pending,color:"#fbbf24",bg:"rgba(245,158,11,0.1)",bc:"rgba(245,158,11,0.3)"},
+                    {lbl:"Completed",num:analytics.stats.completed,color:"#5eead4",bg:"rgba(20,184,166,0.1)",bc:"rgba(20,184,166,0.3)"},
+                    {lbl:"Feedback Submitted",num:staffFeedbackSubmitted,color:"#4ade80",bg:"rgba(34,197,94,0.1)",bc:"rgba(34,197,94,0.3)"},
+                    {lbl:"Feedback Pending",num:staffFeedbackPending,color:"#fb7185",bg:"rgba(244,63,94,0.1)",bc:"rgba(244,63,94,0.3)"},
+                    {lbl:"Avg Rating",num:staffFeedbackAvg,color:"#a78bfa",bg:"rgba(139,92,246,0.1)",bc:"rgba(139,92,246,0.3)"},
+                  ].map(s=><div key={s.lbl} className="stat-card" style={{background:s.bg,border:`1px solid ${s.bc}`}}><span className="num" style={{color:s.color}}>{s.num}</span><div className="lbl">{s.lbl}</div></div>)}
                 </div>
               </div>
             )}
@@ -403,8 +436,9 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
                     <div className="requests-list">{filteredPendingFeedback.map(r=>(
                       <div key={r.id} className="req-card req-pending">
                         <div className="req-top"><div><span className="req-svc">{getServiceMeta(r.service_type, services).icon} {r.service_type}</span><span className="req-user">by {r.user_name} - {r.department}</span></div><Badge status={r.status}/></div>
-                        <div className="req-meta"><span>Email: {r.user_email || "No email"}</span><span>Completed: {r.completed_at ? formatDateTime(r.completed_at) : formatDateTime(r.submitted_at)}</span></div>
-                        <div className="req-actions" style={{marginTop:"0.75rem"}}>
+                        <div className="req-meta" style={{marginTop:"0.4rem"}}><span>Completed: {r.completed_at ? formatDateTime(r.completed_at) : formatDateTime(r.submitted_at)}</span><span style={{color:"var(--primary)",fontWeight:600}}>No feedback yet</span></div>
+                        <div className="req-actions" style={{marginTop:"0.6rem"}}>
+                          <button className="view-btn sm" onClick={()=>setViewFeedback({...r, _type:"pending"})}>View</button>
                           <button className="btn-verify sm" disabled={reminderLoadingId===r.id} onClick={()=>handleSendFeedbackReminder(r.id)}>
                             {reminderLoadingId===r.id ? "Sending..." : "Send Reminder"}
                           </button>
@@ -418,11 +452,14 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
                   <div className="overview-title"><div><h3>Submitted Feedback</h3><p>Feedback records already sent by users.</p></div></div>
                   {filteredFeedback.length===0?<div className="empty-state">No feedback submitted yet.</div>:
                     <div className="requests-list">{filteredFeedback.map(r=>(
-                      <div key={r.id} className="req-card req-completed">
-                        <div className="req-top"><div><span className="req-svc">{getServiceMeta(r.service_type, services).icon} {r.service_type}</span><span className="req-user">by {r.user_name} - {r.department}</span></div><Badge status={r.status}/></div>
-                        <div className="req-meta"><span>Rating: {r.feedback_rating || "-"}/5</span><span>{formatDateTime(r.feedback_submitted_at)}</span></div>
-                        <p className="req-desc" style={{marginTop:"0.5rem"}}>{r.feedback_comment}</p>
-                        <div className="req-meta"><span>Request ID: {r.id}</span>{r.completed_by_name&&<span>Handled by: {r.completed_by_name}</span>}</div>
+                      <div key={r.id} className="req-card req-completed clickable" onClick={()=>setViewFeedback({...r, _type:"submitted"})}>
+                        <div className="req-top"><div><span className="req-svc">{getServiceMeta(r.service_type, services).icon} {r.service_type}</span><span className="req-user">by {r.user_name} - {r.department}</span></div>
+                          <span style={{display:"flex",alignItems:"center",gap:"3px",fontSize:"0.8rem",color:"#f59e0b",fontWeight:700}}>
+                            {[1,2,3,4,5].map(s=><span key={s} style={{color:s<=(r.feedback_rating||0)?"#f59e0b":"rgba(255,255,255,0.2)"}}>{"★"}</span>)}
+                            <span style={{marginLeft:"4px"}}>{r.feedback_rating||"-"}/5</span>
+                          </span>
+                        </div>
+                        <div className="req-meta" style={{marginTop:"0.4rem"}}><span>{formatDateTime(r.feedback_submitted_at)}</span><span style={{color:"var(--primary)",fontWeight:600}}>Click to view feedback</span></div>
                       </div>
                     ))}</div>}
                 </div>
@@ -447,7 +484,17 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
       {viewReq&&(
         <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setViewReq(null)}>
           <div className="modal modal-lg">
-            <div className="modal-header"><h3>{viewReq.status==="approved" ? "Approved Request Details" : viewReq.status==="completed" ? "Completed Job Details" : "Review Request"}</h3><button className="modal-close" onClick={()=>setViewReq(null)}>x</button></div>
+            <div className="modal-header">
+              <h3>
+                {viewReq.status==="approved" ? "✅ Approved Request Details" :
+                 viewReq.status==="completed" ? "🏁 Completed Job Details" :
+                 viewReq.status==="verified" ? "🔍 Verified — Awaiting Admin" :
+                 viewReq.status==="declined" ? "❌ Declined Request" :
+                 viewReq.status==="disapproved" ? "🚫 Disapproved Request" :
+                 "📋 Review Request"}
+              </h3>
+              <button className="modal-close" onClick={()=>setViewReq(null)}>x</button>
+            </div>
             <div className="modal-body">
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.25rem"}}>
                 <strong style={{fontSize:"1.05rem"}}>{getServiceMeta(viewReq.service_type, services).icon} {viewReq.service_type}{viewReq.priority_number ? ` - ${viewReq.priority_number}` : ""}</strong>
@@ -493,6 +540,20 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
                   </div>
                 </>
               )}
+              {/* Declined/Disapproved info */}
+              {(viewReq.status==="declined"||viewReq.status==="disapproved")&&(
+                <div style={{marginTop:"0.9rem",padding:"0.75rem",background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.3)",borderRadius:"8px",fontSize:"0.85rem",color:"#fca5a5"}}>
+                  {viewReq.status==="declined" ? "This request was declined by staff." : "This request was disapproved by admin."}
+                  {viewReq.staff_note && <div style={{marginTop:"0.3rem"}}>Note: {viewReq.staff_note}</div>}
+                  {viewReq.admin_note && <div style={{marginTop:"0.3rem"}}>Admin Note: {viewReq.admin_note}</div>}
+                </div>
+              )}
+              {/* Verified info */}
+              {viewReq.status==="verified"&&(
+                <div style={{marginTop:"0.9rem",padding:"0.75rem",background:"rgba(56,189,248,0.1)",border:"1px solid rgba(56,189,248,0.3)",borderRadius:"8px",fontSize:"0.85rem",color:"#7dd3fc"}}>
+                  Verified by staff — currently awaiting admin review.
+                </div>
+              )}
             </div>
             <div className="modal-footer"><button className="btn-ghost" onClick={()=>setViewReq(null)}>Close</button></div>
           </div>
@@ -523,6 +584,57 @@ export default function StaffDashboard({ currentUser, onLogout, services }) {
               <div className="notif-time">{formatDateTime(viewNotif.created_at)}</div>
             </div>
             <div className="modal-footer"><button className="btn-ghost" onClick={()=>setViewNotif(null)}>Close</button></div>
+          </div>
+        </div>
+      )}
+      {viewFeedback&&(
+        <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setViewFeedback(null)}>
+          <div className="modal modal-lg">
+            <div className="modal-header">
+              <h3>{viewFeedback._type==="submitted" ? "⭐ Feedback Details" : "📋 Pending Feedback — Request Info"}</h3>
+              <button className="modal-close" onClick={()=>setViewFeedback(null)}>x</button>
+            </div>
+            <div className="modal-body">
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.25rem"}}>
+                <strong style={{fontSize:"1.05rem"}}>{getServiceMeta(viewFeedback.service_type, services).icon} {viewFeedback.service_type}</strong>
+                {viewFeedback._type==="submitted" ? (
+                  <span style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"1.1rem",color:"#f59e0b",fontWeight:700}}>
+                    {[1,2,3,4,5].map(s=><span key={s} style={{color:s<=(viewFeedback.feedback_rating||0)?"#f59e0b":"rgba(255,255,255,0.2)"}}>★</span>)}
+                    <span style={{marginLeft:"6px",fontSize:"0.9rem"}}>{viewFeedback.feedback_rating||"-"}/5</span>
+                  </span>
+                ) : <Badge status={viewFeedback.status}/>}
+              </div>
+              <div className="detail-grid">
+                <div className="detail-item"><div className="detail-label">Requester</div><div className="detail-value">{viewFeedback.user_name}</div></div>
+                <div className="detail-item"><div className="detail-label">Department</div><div className="detail-value">{viewFeedback.department}</div></div>
+                <div className="detail-item"><div className="detail-label">Email</div><div className="detail-value">{viewFeedback.user_email||"—"}</div></div>
+                <div className="detail-item"><div className="detail-label">Location</div><div className="detail-value">{viewFeedback.location||"—"}</div></div>
+                <div className="detail-item"><div className="detail-label">Submitted</div><div className="detail-value">{formatDateTime(viewFeedback.submitted_at)}</div></div>
+                <div className="detail-item"><div className="detail-label">Completed</div><div className="detail-value">{viewFeedback.completed_at?formatDateTime(viewFeedback.completed_at):"—"}</div></div>
+                {viewFeedback.completed_by_name&&<div className="detail-item"><div className="detail-label">Handled By</div><div className="detail-value">{viewFeedback.completed_by_name}</div></div>}
+                {viewFeedback._type==="submitted"&&<div className="detail-item"><div className="detail-label">Feedback Date</div><div className="detail-value">{formatDateTime(viewFeedback.feedback_submitted_at)}</div></div>}
+                <div className="detail-item full"><div className="detail-label">Description</div><div className="detail-value">{viewFeedback.description}</div></div>
+                {viewFeedback._type==="submitted"&&viewFeedback.feedback_comment&&(
+                  <div className="detail-item full">
+                    <div className="detail-label">Feedback Comment</div>
+                    <div className="detail-value" style={{padding:"0.75rem",background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:"8px",color:"#fde68a",fontStyle:"italic"}}>"{viewFeedback.feedback_comment}"</div>
+                  </div>
+                )}
+              </div>
+              {viewFeedback._type==="pending"&&(
+                <div style={{marginTop:"1rem",padding:"0.75rem",background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.25)",borderRadius:"8px",fontSize:"0.85rem",color:"#fde68a"}}>
+                  ⚠️ This user has not submitted feedback yet. You can send them a reminder.
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              {viewFeedback._type==="pending"&&(
+                <button className="btn-verify" disabled={reminderLoadingId===viewFeedback.id} onClick={()=>{handleSendFeedbackReminder(viewFeedback.id);setViewFeedback(null);}}>
+                  {reminderLoadingId===viewFeedback.id?"Sending...":"Send Reminder"}
+                </button>
+              )}
+              <button className="btn-ghost" onClick={()=>setViewFeedback(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}

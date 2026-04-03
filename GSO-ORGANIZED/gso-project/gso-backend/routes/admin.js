@@ -235,8 +235,8 @@ router.get("/api/admin/analytics", adminOnly, asyncRoute(async (req, res) => {
     params.push(service);
   }
 
-  const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
-  const countFor = (status) => db.get2(`SELECT COUNT(*) as count FROM requests ${where}${where ? " AND" : " WHERE"} status = ?`, [...params, status]);
+  const where = filters.length ? `WHERE requests.${filters.join(" AND requests.")}` : "";
+  const countFor = (status) => db.get2(`SELECT COUNT(*) as count FROM requests ${where}${where ? " AND" : " WHERE"} requests.status = ?`, [...params, status]);
 
   const [verified, approved, completed, disapproved, pending, declined] = await Promise.all([
     countFor("verified"),
@@ -246,12 +246,47 @@ router.get("/api/admin/analytics", adminOnly, asyncRoute(async (req, res) => {
     countFor("pending"),
     countFor("declined"),
   ]);
+
   const total = await db.get2(`SELECT COUNT(*) as count FROM requests ${where}`, params);
+
   const byService = await db.all2(
     `SELECT service_type, COUNT(*) as count FROM requests ${where} GROUP BY service_type ORDER BY count DESC`,
     params
   );
-  const requests = await db.all2(`SELECT * FROM requests ${where} ORDER BY submitted_at DESC LIMIT 200`, params);
+
+  // Group by user's department (stored in requests.department)
+  const byDepartment = await db.all2(
+    `SELECT department, COUNT(*) as count FROM requests ${where} GROUP BY department ORDER BY count DESC LIMIT 10`,
+    params
+  );
+
+  // Group by location (stored in requests.location)
+  const byLocation = await db.all2(
+    `SELECT location, COUNT(*) as count FROM requests ${where} GROUP BY location ORDER BY count DESC LIMIT 10`,
+    params
+  );
+
+  // Top requesters by number of submitted requests
+  const topRequesters = await db.all2(
+    `SELECT user_name, department, COUNT(*) as count FROM requests ${where} GROUP BY user_id ORDER BY count DESC LIMIT 8`,
+    params
+  );
+
+  // Avg feedback
+  const feedbackWhere = where ? `${where} AND feedback_rating IS NOT NULL` : `WHERE feedback_rating IS NOT NULL`;
+  const avgFeedback = await db.get2(
+    `SELECT AVG(feedback_rating) as avg_rating, COUNT(*) as rated_count FROM requests ${feedbackWhere}`,
+    params
+  );
+
+  // Feedback by service
+  const feedbackByService = await db.all2(
+    `SELECT service_type, ROUND(AVG(feedback_rating),1) as avg_rating, COUNT(*) as count FROM requests ${feedbackWhere} GROUP BY service_type ORDER BY avg_rating DESC`,
+    params
+  );
+
+  const requestsByUser = await db.all2(`SELECT * FROM requests ${where} ORDER BY submitted_at DESC LIMIT 200`, params);
+
   return ok(res, {
     byStatus: [
       { status: "verified", count: verified.count },
@@ -262,7 +297,13 @@ router.get("/api/admin/analytics", adminOnly, asyncRoute(async (req, res) => {
       { status: "declined", count: declined.count },
     ],
     byService,
-    requestsByUser: requests,
+    byDepartment,
+    byLocation,
+    topRequesters,
+    feedbackByService,
+    avgFeedback: avgFeedback?.avg_rating ? Number(avgFeedback.avg_rating).toFixed(1) : "-",
+    avgFeedbackCount: avgFeedback?.rated_count || 0,
+    requestsByUser,
     stats: {
       total: total.count,
       verified: verified.count,

@@ -4,19 +4,7 @@ import { Badge, RoleBadge, Toast, useToast, ServiceDetailBlock, ApprovalTrail, P
 import { HorizontalBarChart, DonutChart, exportRowsToCsv } from "../components/charts";
 import { DynamicServiceForm, ServiceManager } from "../components/ServiceManager";
 import { formatDateTime } from "../utils/date";
-import { getServiceCatalog, getServiceMeta, getServiceOptionsForRequests, getRequestDescription, getRequestLocation, getRequestPreferredDate } from "../utils/services";
-
-function getRequesterIdentity(req) {
-  return req?.requester_full_name || req?.user_name || "Unknown User";
-}
-
-function getRequesterDepartment(req) {
-  return req?.requester_department || req?.department || "Unknown Department";
-}
-
-function getRequesterEmail(req) {
-  return req?.requester_email || req?.user_email || "No Email";
-}
+import { getServiceCatalog, getServiceMeta, getServiceOptionsForRequests, getRequestDescription, getRequestLocation, getRequestPreferredDate, getRequesterIdentity, getRequesterDepartment, getRequesterEmail } from "../utils/services";
 
 export default function AdminPanel({ currentUser, onLogout, services, refreshServices }) {
   const [tab, setTab] = useState("my-queue");
@@ -174,10 +162,7 @@ export default function AdminPanel({ currentUser, onLogout, services, refreshSer
                           <div><span className="req-svc">{getServiceMeta(r.service_type, services).icon} {r.service_type}</span>{r.priority_number && <span className="req-priority">{r.priority_number}</span>}<span className="req-user">by {getRequesterIdentity(r)} - {getRequesterDepartment(r)}</span></div>
                           <Badge status={r.status}/>
                         </div>
-                        <p className="req-desc">{r.description}</p>
-                        <div className="req-meta"><span>Location: {r.location}</span><span>Submitted: {formatDateTime(r.submitted_at)}</span><span>Email: {getRequesterEmail(r)}</span></div>
-                        {r.staff_note&&<div className="staff-note">Staff: {r.staff_note}</div>}
-                        <ApprovalTrail req={r} requiredApprovals={settings.required_approvals}/>
+                        <div className="req-meta" style={{marginTop:"0.5rem"}}><span>Submitted: {formatDateTime(r.submitted_at)}</span><span style={{color:"var(--primary)",fontWeight:600}}>Click to view full details</span></div>
                       </div>
                     );
                   })}</div>}
@@ -207,10 +192,7 @@ export default function AdminPanel({ currentUser, onLogout, services, refreshSer
                   <div className="requests-list">{filteredAll.map(r=>(
                     <div key={r.id} className={`req-card req-${r.status} clickable`} onClick={()=>{setViewReq(r);setActionNote("");setShowDisapprove(false);}}>
                       <div className="req-top"><div><span className="req-svc">{getServiceMeta(r.service_type, services).icon} {r.service_type}</span>{r.priority_number && <span className="req-priority">{r.priority_number}</span>}<span className="req-user">by {getRequesterIdentity(r)} - {getRequesterDepartment(r)}</span></div><Badge status={r.status}/></div>
-                      <p className="req-desc">{r.description}</p>
-                      <div className="req-meta"><span>Location: {r.location}</span><span>Submitted: {formatDateTime(r.submitted_at)}</span><span>Email: {getRequesterEmail(r)}</span></div>
-                      {r.staff_note&&<div className="staff-note">Staff: {r.staff_note}</div>}
-                      <ApprovalTrail req={r} requiredApprovals={settings.required_approvals}/>
+                      <div className="req-meta" style={{marginTop:"0.5rem"}}><span>Submitted: {formatDateTime(r.submitted_at)}</span><span style={{color:"var(--primary)",fontWeight:600}}>Click to view full details</span></div>
                     </div>
                   ))}</div>}
               </div>
@@ -235,36 +217,137 @@ export default function AdminPanel({ currentUser, onLogout, services, refreshSer
                         {adminAnalyticsServiceOptions.filter(s=>s!=="all").map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
-                    <button className="btn-ghost" onClick={()=>fetchAll("analytics", true)}>Apply</button>
-                    <button className="btn-ghost" onClick={() => exportRowsToCsv("admin-analytics-requests.csv", (analytics.requestsByUser || []).map(item => ({
-                      service: item.service_type,
-                      status: item.status,
-                      requester: item.user_name,
-                      department: item.department,
-                      submitted_at: item.submitted_at,
-                    })))}>Export CSV</button>
-                  </div>
+                     <button className="btn-ghost" onClick={()=>fetchAll("analytics", true)}>Apply</button>
+                     <button className="btn-ghost" onClick={() => exportRowsToCsv("admin-analytics.csv", (analytics.requestsByUser || []).map(item => ({ service: item.service_type, status: item.status, requester: item.user_name, department: item.department, location: item.location, submitted_at: item.submitted_at })))}>
+                       📥 Export CSV
+                     </button>
                 </div>
-                <div className="viz-grid">
+                 </div>
+
+                {/* KPI Row */}
+                <div className="overview-top-grid" style={{marginTop:"1.25rem"}}>
+                  {[
+                    { label:"Total Requests", value:analytics.stats.total, note:`${analytics.stats.pending} pending`, color:"#60a5fa" },
+                    { label:"Completed", value:analytics.stats.completed, note:`${analytics.stats.approved} ready for service`, color:"#4ade80" },
+                    { label:"In Review", value:analytics.stats.verified, note:"Awaiting admin action", color:"#38bdf8" },
+                    { label:"Rejected", value:(analytics.stats.disapproved||0)+(analytics.stats.declined||0), note:"Disapproved + declined", color:"#f87171" },
+                    { label:"Feedback Received", value:adminFeedbackSubmitted, note:`${adminFeedbackPending} still pending`, color:"#34d399" },
+                    { label:"Avg Rating", value:analytics.avgFeedback||adminFeedbackAvg, note:`From ${analytics.avgFeedbackCount||0} ratings`, color:"#a78bfa" },
+                  ].map(item=>(
+                    <div className="overview-kpi" key={item.label}>
+                      <div className="kpi-label">{item.label}</div>
+                      <div className="kpi-value" style={{color:item.color}}>{item.value}</div>
+                      <div className="kpi-note">{item.note}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Status & Service Charts */}
+                <div className="viz-grid" style={{marginTop:"1.5rem"}}>
                   <div className="chart-panel">
-                    <h4>Request Status Flow</h4>
-                    <p>See the current request mix within the selected range.</p>
+                    <h4>📊 Request Status Flow</h4>
+                    <p>Distribution of requests across the workflow pipeline.</p>
                     <HorizontalBarChart items={adminStatusChart} />
                   </div>
                   <div className="chart-panel">
-                    <h4>Service Demand</h4>
-                    <p>Top service types for the selected filters.</p>
+                    <h4>🧰 Service Demand</h4>
+                    <p>Most requested service types in the selected period.</p>
                     <DonutChart items={adminServiceChart.length ? adminServiceChart : [{ label:"No Data", value:1, color:"rgba(255,255,255,0.12)" }]} totalLabel="Requests" />
                   </div>
                 </div>
-                <div className="stats-grid">
+
+                {/* Department & Location */}
+                <div className="viz-grid" style={{marginTop:"1.5rem"}}>
+                  <div className="chart-panel">
+                    <h4>🏢 Department Usage</h4>
+                    <p>Which departments submit the most service requests.</p>
+                    {analytics.byDepartment?.length ? (
+                      <HorizontalBarChart items={analytics.byDepartment.slice(0,8).map((d,i)=>({
+                        label: d.department || "Unknown",
+                        value: Number(d.count),
+                        color: ["#60a5fa","#38bdf8","#a78bfa","#4ade80","#f59e0b","#f87171","#34d399","#fb7185"][i%8],
+                      }))} />
+                    ) : <div className="empty-state" style={{fontSize:"0.85rem"}}>No department data yet.</div>}
+                  </div>
+                  <div className="chart-panel">
+                    <h4>📍 Top Locations</h4>
+                    <p>Rooms and buildings with the highest request volume.</p>
+                    {analytics.byLocation?.length ? (
+                      <div style={{display:"flex",flexDirection:"column",gap:"0.55rem",marginTop:"0.75rem"}}>
+                        {analytics.byLocation.slice(0,8).map((loc,i)=>{
+                          const max = Number(analytics.byLocation[0]?.count) || 1;
+                          return (
+                            <div key={i} style={{display:"flex",alignItems:"center",gap:"0.75rem",fontSize:"0.85rem"}}>
+                              <span style={{width:"1.5rem",textAlign:"right",color:"var(--text-muted)",fontSize:"0.75rem",fontWeight:600}}>#{i+1}</span>
+                              <span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{loc.location||"Unknown"}</span>
+                              <div style={{flex:2,background:"rgba(255,255,255,0.05)",borderRadius:"4px",overflow:"hidden",height:"10px"}}>
+                                <div style={{height:"100%",background:"#38bdf8",width:`${(Number(loc.count)/max)*100}%`,borderRadius:"4px",transition:"width 0.4s"}}/>
+                              </div>
+                              <span style={{minWidth:"2rem",textAlign:"right",fontWeight:700,color:"#38bdf8"}}>{loc.count}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : <div className="empty-state" style={{fontSize:"0.85rem"}}>No location data yet.</div>}
+                  </div>
+                </div>
+
+                {/* Top Requesters & Feedback by Service */}
+                <div className="viz-grid" style={{marginTop:"1.5rem"}}>
+                  <div className="chart-panel">
+                    <h4>👤 Top Requesters</h4>
+                    <p>Instructors and users who submit the most requests.</p>
+                    {analytics.topRequesters?.length ? (
+                      <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginTop:"0.75rem"}}>
+                        {analytics.topRequesters.map((u,i)=>(
+                          <div key={i} style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.5rem 0.75rem",background:"rgba(255,255,255,0.03)",borderRadius:"8px",border:"1px solid rgba(255,255,255,0.06)"}}>
+                            <div style={{width:"1.75rem",height:"1.75rem",borderRadius:"50%",background:["#60a5fa","#f59e0b","#4ade80"][i%3],display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.75rem",fontWeight:700,color:"#0f172a",flexShrink:0}}>
+                              {(u.user_name||"?")[0].toUpperCase()}
+                            </div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontWeight:600,fontSize:"0.85rem",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{u.user_name}</div>
+                              <div style={{fontSize:"0.75rem",color:"var(--text-muted)"}}>{u.department}</div>
+                            </div>
+                            <div style={{textAlign:"right"}}>
+                              <div style={{fontWeight:700,color:"#60a5fa",fontSize:"1rem"}}>{u.count}</div>
+                              <div style={{fontSize:"0.7rem",color:"var(--text-muted)"}}>requests</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <div className="empty-state" style={{fontSize:"0.85rem"}}>No requester data yet.</div>}
+                  </div>
+                  <div className="chart-panel">
+                    <h4>⭐ Feedback by Service</h4>
+                    <p>Average user satisfaction rating per service type.</p>
+                    {analytics.feedbackByService?.length ? (
+                      <div style={{display:"flex",flexDirection:"column",gap:"0.6rem",marginTop:"0.75rem"}}>
+                        {analytics.feedbackByService.map((fb,i)=>(
+                          <div key={i} style={{display:"flex",alignItems:"center",gap:"0.75rem",fontSize:"0.85rem"}}>
+                            <span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fb.service_type}</span>
+                            <div style={{display:"flex",gap:"2px"}}>
+                              {[1,2,3,4,5].map(star=>(
+                                <span key={star} style={{fontSize:"0.85rem",color:star<=Math.round(fb.avg_rating)?"#f59e0b":"rgba(255,255,255,0.15)"}}>★</span>
+                              ))}
+                            </div>
+                            <span style={{fontWeight:700,color:"#f59e0b",minWidth:"2.5rem",textAlign:"right"}}>{Number(fb.avg_rating).toFixed(1)}</span>
+                            <span style={{color:"var(--text-muted)",fontSize:"0.75rem"}}>({fb.count})</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <div className="empty-state" style={{fontSize:"0.85rem"}}>No feedback data yet.</div>}
+                  </div>
+                </div>
+
+                {/* Core Stats Row */}
+                <div className="stats-grid" style={{marginTop:"1.5rem"}}>
                   {[
                     {lbl:"Total",num:analytics.stats.total,color:"#93c5fd",bg:"rgba(59,130,246,0.1)",bc:"rgba(59,130,246,0.3)"},
                     {lbl:"Completed",num:analytics.stats.completed,color:"#5eead4",bg:"rgba(20,184,166,0.1)",bc:"rgba(20,184,166,0.3)"},
                     {lbl:"Pending",num:analytics.stats.pending,color:"#fbbf24",bg:"rgba(245,158,11,0.1)",bc:"rgba(245,158,11,0.3)"},
                     {lbl:"Feedback Submitted",num:adminFeedbackSubmitted,color:"#4ade80",bg:"rgba(34,197,94,0.1)",bc:"rgba(34,197,94,0.3)"},
                     {lbl:"Feedback Pending",num:adminFeedbackPending,color:"#fb7185",bg:"rgba(244,63,94,0.1)",bc:"rgba(244,63,94,0.3)"},
-                    {lbl:"Avg Rating",num:adminFeedbackAvg,color:"#a78bfa",bg:"rgba(139,92,246,0.1)",bc:"rgba(139,92,246,0.3)"},
+                    {lbl:"Avg Rating",num:analytics.avgFeedback||adminFeedbackAvg,color:"#a78bfa",bg:"rgba(139,92,246,0.1)",bc:"rgba(139,92,246,0.3)"},
                   ].map(s=><div key={s.lbl} className="stat-card" style={{background:s.bg,border:`1px solid ${s.bc}`}}><span className="num" style={{color:s.color}}>{s.num}</span><div className="lbl">{s.lbl}</div></div>)}
                 </div>
               </div>

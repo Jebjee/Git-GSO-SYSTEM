@@ -4,7 +4,7 @@ import { Badge, RoleBadge, Toast, useToast, ServiceDetailBlock, ApprovalTrail, P
 import { HorizontalBarChart, DonutChart, exportRowsToCsv } from "../components/charts";
 import { DynamicServiceForm, ServiceManager } from "../components/ServiceManager";
 import { formatDateTime } from "../utils/date";
-import { getServiceCatalog, getServiceMeta, getServiceOptionsForRequests, getRequestDescription, getRequestLocation, getRequestPreferredDate } from "../utils/services";
+import { getServiceCatalog, getServiceMeta, getServiceOptionsForRequests, getRequestDescription, getRequestLocation, getRequestPreferredDate, getRequesterIdentity, getRequesterDepartment, getRequesterEmail } from "../utils/services";
 
 export default function HeadAdminPanel({ currentUser, onLogout, services, refreshServices }) {
   const [tab, setTab] = useState("accounts");
@@ -205,10 +205,7 @@ export default function HeadAdminPanel({ currentUser, onLogout, services, refres
                   <div className="requests-list">{filteredRequests.map(r=>(
                     <div key={r.id} className={`req-card req-${r.status} clickable`} onClick={()=>setViewReq(r)}>
                       <div className="req-top"><div><span className="req-svc">{getServiceMeta(r.service_type, services).icon} {r.service_type}</span>{r.priority_number && <span className="req-priority">{r.priority_number}</span>}<span className="req-user">by {getRequesterIdentity(r)} - {getRequesterDepartment(r)}</span></div><Badge status={r.status}/></div>
-                      <p className="req-desc">{r.description}</p>
-                      <div className="req-meta"><span>Location: {r.location}</span><span>Submitted: {formatDateTime(r.submitted_at)}</span><span>Email: {getRequesterEmail(r)}</span></div>
-                      {r.staff_note&&<div className="staff-note">Staff: {r.staff_note}</div>}
-                      <ApprovalTrail req={r} requiredApprovals={requiredApprovals}/>
+                      <div className="req-meta" style={{marginTop:"0.5rem"}}><span>Submitted: {formatDateTime(r.submitted_at)}</span><span style={{color:"var(--primary)",fontWeight:600}}>Click to view full details</span></div>
                     </div>
                   ))}</div>}
               </div>
@@ -252,69 +249,155 @@ export default function HeadAdminPanel({ currentUser, onLogout, services, refres
                     </p>
                   </div>
                 </div>
-              </div>
+               </div>
             )}
             {tab==="overview"&&stats&&(
               <div className="overview-shell">
-                <div className="section-header"><h2>System Overview</h2><p>Clearer analytics for users and request progress</p></div>
+                <div className="section-header"><h2>System Overview</h2><p>Professional analytics for administrators — departments, locations, and instructor usage.</p></div>
 
-                <div className="overview-section">
-                  <div className="overview-title">
-                    <div>
-                      <h3>Quick Summary</h3>
-                      <p>Top-level counts to understand the current system state.</p>
+                <div className="overview-top-grid" style={{marginTop:"0.5rem"}}>
+                  {[
+                    { label:"Approved Accounts", value:stats.users.approved, note:`${stats.users.pending} still pending`, color:"#4ade80" },
+                    { label:"Total Requests", value:stats.requests.total, note:`${stats.requests.completed} completed`, color:"#60a5fa" },
+                    { label:"Needs Review", value:stats.requests.pending+stats.requests.verified, note:"Pending + verified", color:"#f59e0b" },
+                    { label:"Rejected Flow", value:stats.requests.disapproved+(stats.requests.declined||0), note:"Disapproved + declined", color:"#f87171" },
+                    { label:"Feedback Received", value:headFeedbackSubmitted, note:`${headFeedbackPending} pending`, color:"#34d399" },
+                    { label:"Avg Rating", value:headFeedbackAvg, note:"Overall average", color:"#a78bfa" },
+                  ].map(item=>(
+                    <div className="overview-kpi" key={item.label}>
+                      <div className="kpi-label">{item.label}</div>
+                      <div className="kpi-value" style={{color:item.color}}>{item.value}</div>
+                      <div className="kpi-note">{item.note}</div>
                     </div>
-                  </div>
-                  <div className="overview-top-grid">
-                    {[
-                      { label: "Approved Accounts", value: stats.users.approved, note: `${stats.users.pending} still pending`, color: "#4ade80" },
-                      { label: "Total Requests", value: stats.requests.total, note: `${stats.requests.completed} completed jobs`, color: "#60a5fa" },
-                      { label: "Needs Review", value: stats.requests.pending + stats.requests.verified, note: "Pending + verified", color: "#f59e0b" },
-                      { label: "Rejected Flow", value: stats.requests.disapproved + (stats.requests.declined || 0), note: "Disapproved + declined", color: "#f87171" },
-                      { label: "Feedback Submitted", value: headFeedbackSubmitted, note: `${headFeedbackPending} pending`, color: "#34d399" },
-                      { label: "Avg Feedback", value: headFeedbackAvg, note: "Average rating", color: "#a78bfa" },
-                    ].map(item => (
-                      <div className="overview-kpi" key={item.label}>
-                        <div className="kpi-label">{item.label}</div>
-                        <div className="kpi-value" style={{ color: item.color }}>{item.value}</div>
-                        <div className="kpi-note">{item.note}</div>
-                      </div>
-                    ))}
-                  </div>
+                  ))}
                 </div>
 
-                <div className="viz-grid">
+                <div className="viz-grid" style={{marginTop:"1.5rem"}}>
                   <div className="chart-panel">
-                    <h4>User Distribution</h4>
+                    <h4>👥 User Distribution</h4>
                     <p>Compare account types and approval state side by side.</p>
                     <HorizontalBarChart items={userBreakdown} />
                   </div>
-
                   <div className="chart-panel">
-                    <h4>Request Status Share</h4>
+                    <h4>📊 Request Status Share</h4>
                     <p>See how requests are distributed across the workflow.</p>
                     <DonutChart items={requestBreakdown} totalLabel="Requests" />
                   </div>
                 </div>
 
-                <div className="overview-section">
-                  <div className="overview-title">
-                    <div>
-                      <h3>Core + Feedback Metrics</h3>
-                      <p>Focused dashboard with only key numbers.</p>
-                    </div>
+                <div className="viz-grid" style={{marginTop:"1.5rem"}}>
+                  <div className="chart-panel">
+                    <h4>🏢 Department Usage</h4>
+                    <p>Which departments submit the most service requests.</p>
+                    {(() => {
+                      const depts = Object.entries(
+                        requests.reduce((acc,r)=>{ const d=r.department||"Unknown"; acc[d]=(acc[d]||0)+1; return acc; },{})
+                      ).sort((a,b)=>b[1]-a[1]).slice(0,8);
+                      return depts.length ? (
+                        <HorizontalBarChart items={depts.map(([label,value],i)=>({
+                          label, value,
+                          color:["#60a5fa","#38bdf8","#a78bfa","#4ade80","#f59e0b","#f87171","#34d399","#fb7185"][i%8],
+                        }))} />
+                      ) : <div className="empty-state" style={{fontSize:"0.85rem"}}>No department data yet.</div>;
+                    })()}
                   </div>
-                  <div className="stats-grid">
-                    {[
-                      {lbl:"Users",num:stats.users.total,color:"#93c5fd",bg:"rgba(59,130,246,0.1)",bc:"rgba(59,130,246,0.3)"},
-                      {lbl:"Approved Accounts",num:stats.users.approved,color:"#4ade80",bg:"rgba(34,197,94,0.1)",bc:"rgba(34,197,94,0.3)"},
-                      {lbl:"Total Requests",num:stats.requests.total,color:"#93c5fd",bg:"rgba(59,130,246,0.1)",bc:"rgba(59,130,246,0.3)"},
-                      {lbl:"Completed",num:stats.requests.completed,color:"#5eead4",bg:"rgba(20,184,166,0.1)",bc:"rgba(20,184,166,0.3)"},
-                      {lbl:"Feedback Submitted",num:headFeedbackSubmitted,color:"#34d399",bg:"rgba(16,185,129,0.1)",bc:"rgba(16,185,129,0.3)"},
-                      {lbl:"Feedback Pending",num:headFeedbackPending,color:"#fb7185",bg:"rgba(244,63,94,0.1)",bc:"rgba(244,63,94,0.3)"},
-                      {lbl:"Avg Rating",num:headFeedbackAvg,color:"#a78bfa",bg:"rgba(139,92,246,0.1)",bc:"rgba(139,92,246,0.3)"},
-                    ].map(s=><div key={s.lbl} className="stat-card" style={{background:s.bg,border:`1px solid ${s.bc}`}}><span className="num" style={{color:s.color}}>{s.num}</span><div className="lbl">{s.lbl}</div></div>)}
+                  <div className="chart-panel">
+                    <h4>📍 Top Request Locations</h4>
+                    <p>Rooms and buildings with the highest request volume system-wide.</p>
+                    {(() => {
+                      const locs = Object.entries(
+                        requests.reduce((acc,r)=>{ const l=r.location||"Unknown"; acc[l]=(acc[l]||0)+1; return acc; },{})
+                      ).sort((a,b)=>b[1]-a[1]).slice(0,8);
+                      const max = locs[0]?.[1]||1;
+                      return locs.length ? (
+                        <div style={{display:"flex",flexDirection:"column",gap:"0.55rem",marginTop:"0.75rem"}}>
+                          {locs.map(([loc,cnt],i)=>(
+                            <div key={i} style={{display:"flex",alignItems:"center",gap:"0.75rem",fontSize:"0.85rem"}}>
+                              <span style={{width:"1.5rem",textAlign:"right",color:"var(--text-muted)",fontSize:"0.75rem",fontWeight:600}}>#{i+1}</span>
+                              <span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{loc}</span>
+                              <div style={{flex:2,background:"rgba(255,255,255,0.05)",borderRadius:"4px",overflow:"hidden",height:"10px"}}>
+                                <div style={{height:"100%",background:"#a78bfa",width:`${(cnt/max)*100}%`,borderRadius:"4px",transition:"width 0.4s"}}/>
+                              </div>
+                              <span style={{minWidth:"2rem",textAlign:"right",fontWeight:700,color:"#a78bfa"}}>{cnt}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <div className="empty-state" style={{fontSize:"0.85rem"}}>No location data yet.</div>;
+                    })()}
                   </div>
+                </div>
+
+                <div className="viz-grid" style={{marginTop:"1.5rem"}}>
+                  <div className="chart-panel">
+                    <h4>👤 Top Requesters (Instructors)</h4>
+                    <p>Users and instructors who submit the most service requests.</p>
+                    {(() => {
+                      const top = Object.entries(
+                        requests.reduce((acc,r)=>{
+                          const k=r.user_id||r.user_name;
+                          if(!acc[k]) acc[k]={name:r.user_name,dept:r.department,count:0};
+                          acc[k].count++; return acc;
+                        },{})
+                      ).sort((a,b)=>b[1].count-a[1].count).slice(0,8);
+                      return top.length ? (
+                        <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginTop:"0.75rem"}}>
+                          {top.map(([,u],i)=>(
+                            <div key={i} style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.5rem 0.75rem",background:"rgba(255,255,255,0.03)",borderRadius:"8px",border:"1px solid rgba(255,255,255,0.06)"}}>
+                              <div style={{width:"1.75rem",height:"1.75rem",borderRadius:"50%",background:["#60a5fa","#f59e0b","#4ade80","#a78bfa","#f87171"][i%5],display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.75rem",fontWeight:700,color:"#0f172a",flexShrink:0}}>
+                                {(u.name||"?")[0].toUpperCase()}
+                              </div>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontWeight:600,fontSize:"0.85rem",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{u.name}</div>
+                                <div style={{fontSize:"0.75rem",color:"var(--text-muted)"}}>{u.dept}</div>
+                              </div>
+                              <div style={{textAlign:"right"}}>
+                                <div style={{fontWeight:700,color:"#60a5fa",fontSize:"1rem"}}>{u.count}</div>
+                                <div style={{fontSize:"0.7rem",color:"var(--text-muted)"}}>requests</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <div className="empty-state" style={{fontSize:"0.85rem"}}>No requester data yet.</div>;
+                    })()}
+                  </div>
+                  <div className="chart-panel">
+                    <h4>⭐ Feedback by Service</h4>
+                    <p>Average satisfaction rating per service type.</p>
+                    {(() => {
+                      const byService = Object.entries(
+                        requests.filter(r=>r.feedback_rating).reduce((acc,r)=>{
+                          if(!acc[r.service_type]) acc[r.service_type]={sum:0,count:0};
+                          acc[r.service_type].sum+=Number(r.feedback_rating);
+                          acc[r.service_type].count++; return acc;
+                        },{})
+                      ).map(([svc,d])=>({svc,avg:d.sum/d.count,count:d.count})).sort((a,b)=>b.avg-a.avg);
+                      return byService.length ? (
+                        <div style={{display:"flex",flexDirection:"column",gap:"0.6rem",marginTop:"0.75rem"}}>
+                          {byService.map((fb,i)=>(
+                            <div key={i} style={{display:"flex",alignItems:"center",gap:"0.75rem",fontSize:"0.85rem"}}>
+                              <span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fb.svc}</span>
+                              <div style={{display:"flex",gap:"2px"}}>
+                                {[1,2,3,4,5].map(star=>(<span key={star} style={{color:star<=Math.round(fb.avg)?"#f59e0b":"rgba(255,255,255,0.15)"}}>★</span>))}
+                              </div>
+                              <span style={{fontWeight:700,color:"#f59e0b",minWidth:"2.5rem",textAlign:"right"}}>{fb.avg.toFixed(1)}</span>
+                              <span style={{color:"var(--text-muted)",fontSize:"0.75rem"}}>({fb.count})</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <div className="empty-state" style={{fontSize:"0.85rem"}}>No feedback data yet.</div>;
+                    })()}
+                  </div>
+                </div>
+
+                <div className="stats-grid" style={{marginTop:"1.5rem"}}>
+                  {[
+                    {lbl:"Users",num:stats.users.total,color:"#93c5fd",bg:"rgba(59,130,246,0.1)",bc:"rgba(59,130,246,0.3)"},
+                    {lbl:"Approved",num:stats.users.approved,color:"#4ade80",bg:"rgba(34,197,94,0.1)",bc:"rgba(34,197,94,0.3)"},
+                    {lbl:"Total Requests",num:stats.requests.total,color:"#93c5fd",bg:"rgba(59,130,246,0.1)",bc:"rgba(59,130,246,0.3)"},
+                    {lbl:"Completed",num:stats.requests.completed,color:"#5eead4",bg:"rgba(20,184,166,0.1)",bc:"rgba(20,184,166,0.3)"},
+                    {lbl:"Feedback Got",num:headFeedbackSubmitted,color:"#34d399",bg:"rgba(16,185,129,0.1)",bc:"rgba(16,185,129,0.3)"},
+                    {lbl:"Avg Rating",num:headFeedbackAvg,color:"#a78bfa",bg:"rgba(139,92,246,0.1)",bc:"rgba(139,92,246,0.3)"},
+                  ].map(s=><div key={s.lbl} className="stat-card" style={{background:s.bg,border:`1px solid ${s.bc}`}}><span className="num" style={{color:s.color}}>{s.num}</span><div className="lbl">{s.lbl}</div></div>)}
                 </div>
               </div>
             )}

@@ -132,7 +132,7 @@ export function slugifyFieldKey(value) {
 export function makeServiceDraft() {
   return {
     name: "",
-    icon: "\u{1F9F0}",
+    icon: "🧰",
     color: "#3b82f6",
     category: "General",
     is_active: true,
@@ -142,4 +142,16 @@ export function makeServiceDraft() {
       { key: "preferred_date", label: "Preferred Date", type: "date", required: true, options: "" },
     ],
   };
+}
+
+export function getRequesterIdentity(req) {
+  return req?.requester_full_name || req?.user_name || "Unknown User";
+}
+
+export function getRequesterDepartment(req) {
+  return req?.requester_department || req?.department || "Unknown Department";
+}
+
+export function getRequesterEmail(req) {
+  return req?.requester_email || req?.user_email || "No Email";
 }
